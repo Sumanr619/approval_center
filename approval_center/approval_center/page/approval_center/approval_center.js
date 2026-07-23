@@ -1,100 +1,132 @@
 frappe.pages['approval-center'].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({
-		parent: wrapper,
-		title: __('Approval Center'),
-		single_column: true,
-	});
+	frappe.ui.make_app_page({ parent: wrapper, title: __('Approval Center'), single_column: true });
+
 	const $container = $(wrapper).find('.layout-main-section');
-	const state = { selected_tab: '', data: { tabs: [], documents: [], summary: {} } };
-
-	$container.on('click.approval-center', '[data-ac-action]', async function () {
-		const button = this;
-		const action = $(button).attr('data-ac-action');
-		const doctype = $(button).attr('data-ac-doctype');
-		const name = $(button).attr('data-ac-name');
-		const requires_reason = ['reject', 'rejected', 'send back'].includes(action.toLowerCase());
-
-		frappe.prompt(
-			[
-				{
-					fieldname: 'comment',
-					label: requires_reason ? __('Reason') : __('Comment (optional)'),
-					fieldtype: 'Small Text',
-					reqd: requires_reason,
-				},
-			],
-			async (values) => {
-				await frappe.call({
-					method: 'approval_center.api.perform_workflow_action',
-					args: { doctype, name, action, comment: values.comment },
-					freeze: true,
-					freeze_message: __('Applying {0}...', [action]),
-				});
-				frappe.show_alert({ message: __('{0} applied', [action]), indicator: 'green' });
-				refresh();
-			},
-			__('Confirm {0}', [action]),
-			__('Apply')
-		);
-	});
+	const state = {
+		selected_tab: '',
+		filters: {},
+		data: { tabs: [], documents: [], summary: { pending: 0, overdue: 0 } },
+	};
 
 	$container.on('click.approval-center', '[data-ac-tab]', function () {
 		state.selected_tab = $(this).attr('data-ac-tab');
 		refresh();
 	});
 
-	$container.on('click.approval-center', '[data-ac-open]', function () {
-		frappe.set_route('Form', $(this).attr('data-ac-doctype'), $(this).attr('data-ac-name'));
+	$container.on('click.approval-center', '[data-ac-filter]', function () {
+		state.filters = {
+			doctype: $container.find('[name="doctype"]').val().trim(),
+			company: $container.find('[name="company"]').val().trim(),
+			from_date: $container.find('[name="from_date"]').val(),
+		};
+		state.selected_tab = '';
+		refresh();
 	});
 
 	$container.on('click.approval-center', '[data-ac-refresh]', refresh);
 
+	$container.on('click.approval-center', '[data-ac-open]', function () {
+		frappe.set_route('Form', $(this).attr('data-ac-doctype'), $(this).attr('data-ac-name'));
+	});
+
+	$container.on('click.approval-center', '[data-ac-action]', function () {
+		const $button = $(this);
+		const action = $button.attr('data-ac-action');
+		const requires_reason = ['reject', 'rejected', 'send back'].includes(action.toLowerCase());
+
+		frappe.prompt(
+			[{
+				fieldname: 'comment',
+				label: requires_reason ? __('Rejection reason') : __('Comment (optional)'),
+				fieldtype: 'Small Text',
+				reqd: requires_reason,
+			}],
+			async (values) => {
+				try {
+					await frappe.call({
+						method: 'approval_center.api.perform_workflow_action',
+						args: {
+							doctype: $button.attr('data-ac-doctype'),
+							name: $button.attr('data-ac-name'),
+							action,
+							comment: values.comment,
+						},
+						freeze: true,
+						freeze_message: __('Applying {0}...', [action]),
+					});
+					frappe.show_alert({ message: __('{0} applied successfully', [action]), indicator: 'green' });
+					refresh();
+				} catch (error) {
+					frappe.msgprint({ title: __('Action not applied'), message: error.message, indicator: 'red' });
+				}
+			},
+			__('Confirm {0}', [action]),
+			__('Apply action')
+		);
+	});
+
 	async function refresh() {
-		$container.find('[data-ac-body]').html(`<div class="text-muted p-4">${__('Loading approvals...')}</div>`);
+		$container.find('[data-ac-results]').addClass('ac-loading');
 		try {
 			const response = await frappe.call({
 				method: 'approval_center.api.get_dashboard',
-				args: { tab_key: state.selected_tab },
+				args: { tab_key: state.selected_tab, filters: state.filters },
 			});
 			state.data = response.message;
 			render();
 		} catch (error) {
 			console.error('Approval Center failed to load:', error);
-			$container.find('[data-ac-body]').html(
-				`<div class="alert alert-danger">${frappe.utils.escape_html(error.message || __('Could not load approvals.'))}</div>`
-			);
+			$container.find('[data-ac-results]').html(`
+				<div class="ac-error"><b>${__('Approval Center could not load')}</b><br>${frappe.utils.escape_html(error.message || __('Please contact your system administrator.'))}</div>
+			`);
 		}
 	}
 
 	function render() {
-		const { tabs, documents, summary } = state.data;
 		const escaped = frappe.utils.escape_html;
+		const { tabs, documents, summary } = state.data;
 		const tab_html = [
-			`<button class="btn btn-sm ${state.selected_tab ? 'btn-default' : 'btn-primary'}" data-ac-tab="">${__('All pending')} <b>${summary.pending || 0}</b></button>`,
-			...tabs.map((tab) => `<button class="btn btn-sm ${state.selected_tab === tab.key ? 'btn-primary' : 'btn-default'}" data-ac-tab="${escaped(tab.key)}">${escaped(tab.doctype)} · ${escaped(tab.state)} <b>${tab.count}</b></button>`),
-		].join(' ');
-		const cards = documents.length
-			? documents.map((doc) => {
-				const actions = doc.actions.map((action) => `<button class="btn btn-primary btn-xs" data-ac-action="${escaped(action)}" data-ac-doctype="${escaped(doc.doctype)}" data-ac-name="${escaped(doc.name)}">${escaped(action)}</button>`).join(' ');
-				const amount = doc.amount ? format_currency(doc.amount, doc.currency) : '—';
-				return `<div class="border rounded p-3 mb-3 bg-white">
-					<div class="d-flex justify-content-between"><span class="indicator-pill blue">${escaped(doc.state)}</span><small class="text-muted">${frappe.datetime.comment_when(doc.creation)}</small></div>
-					<h4 class="mt-3 mb-1">${escaped(doc.title || doc.name)}</h4>
-					<div class="text-muted mb-3">${escaped(doc.doctype)} · ${escaped(doc.name)}</div>
-					<div class="d-flex justify-content-between mb-3"><span>${escaped(doc.company || doc.owner || '')}</span><b>${amount}</b></div>
-					<div class="d-flex gap-2 flex-wrap">${actions} <button class="btn btn-default btn-xs" data-ac-open data-ac-doctype="${escaped(doc.doctype)}" data-ac-name="${escaped(doc.name)}">${__('Open')}</button></div>
-				</div>`;
-			}).join('')
-			: `<div class="text-muted text-center p-5">${__('Nothing is waiting for your approval.')}</div>`;
+			`<button class="ac-tab ${state.selected_tab ? '' : 'active'}" data-ac-tab=""><span>${__('All approvals')}</span><b>${summary.pending || 0}</b></button>`,
+			...tabs.map((tab) => `<button class="ac-tab ${state.selected_tab === tab.key ? 'active' : ''}" data-ac-tab="${escaped(tab.key)}"><span>${escaped(tab.doctype)} <em>·</em> ${escaped(tab.state)}</span><b>${tab.count}</b></button>`),
+		].join('');
+
+		const cards = documents.length ? documents.map((doc) => {
+			const action_buttons = doc.actions.map((action) => `<button class="btn btn-primary btn-sm" data-ac-action="${escaped(action)}" data-ac-doctype="${escaped(doc.doctype)}" data-ac-name="${escaped(doc.name)}">${escaped(action)}</button>`).join('');
+			const amount = doc.amount ? format_currency(doc.amount, doc.currency) : __('Not applicable');
+			return `<article class="ac-card">
+				<div class="ac-card-head"><span class="ac-state">${escaped(doc.state)}</span><span class="ac-age">${frappe.datetime.comment_when(doc.creation)}</span></div>
+				<div class="ac-card-body">
+					<p class="ac-doc-type">${escaped(doc.doctype)}</p>
+					<h3>${escaped(doc.title || doc.name)}</h3>
+					<p class="ac-document-id">${escaped(doc.name)}</p>
+					<div class="ac-divider"></div>
+					<div class="ac-details"><span>${escaped(doc.company || doc.owner || __('Unassigned'))}</span><strong>${amount}</strong></div>
+				</div>
+				<div class="ac-card-actions">${action_buttons}<button class="btn btn-default btn-sm" data-ac-open data-ac-doctype="${escaped(doc.doctype)}" data-ac-name="${escaped(doc.name)}">${__('Review')}</button></div>
+			</article>`;
+		}).join('') : `<div class="ac-empty"><div class="ac-empty-icon">✓</div><h3>${__('You are all caught up')}</h3><p>${__('There are no documents waiting for your approval with the selected filters.')}</p></div>`;
 
 		$container.html(`
-			<div class="mb-4 d-flex align-items-center gap-4">
-				<div class="border rounded p-3"><small class="text-muted d-block">${__('Awaiting your action')}</small><b class="h3">${summary.pending || 0}</b></div>
-				<div class="border rounded p-3"><small class="text-muted d-block">${__('Overdue (3+ days)')}</small><b class="h3 text-danger">${summary.overdue || 0}</b></div>
-				<button class="btn btn-default btn-sm ml-auto" data-ac-refresh>${__('Refresh')}</button>
-			</div>
-			<div class="mb-4 d-flex gap-2 flex-wrap">${tab_html}</div>
-			<div data-ac-body>${cards}</div>
+			<style>
+				.approval-center { color: #172b4d; max-width: 1440px; margin: 0 auto; padding-bottom: 36px; }
+				.ac-hero { border-radius: 18px; color: #fff; padding: 28px 30px; margin-bottom: 22px; background: linear-gradient(120deg, #172b4d 0%, #1f4b84 60%, #1b6b8e 100%); box-shadow: 0 12px 30px rgba(31,75,132,.18); }
+				.ac-hero-top, .ac-card-head, .ac-details, .ac-card-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+				.ac-kicker { margin: 0 0 6px; color: #a9d8ff; font-size: 12px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; }
+				.ac-hero h2 { margin: 0; color: #fff; font-size: 27px; font-weight: 700; }.ac-hero p { margin: 8px 0 0; color: #d9e9f8; }
+				.ac-refresh { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); color: #fff; border-radius: 8px; padding: 8px 14px; }.ac-refresh:hover { background: rgba(255,255,255,.24); color: #fff; }
+				.ac-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 190px)); gap: 12px; margin-top: 24px; }.ac-stat { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 13px 16px; }.ac-stat span { display: block; color: #d9e9f8; font-size: 12px; }.ac-stat strong { display: block; font-size: 26px; margin-top: 2px; }
+				.ac-toolbar { display: grid; grid-template-columns: 1.2fr 1.2fr 170px auto; gap: 10px; padding: 16px; margin-bottom: 18px; background: #fff; border: 1px solid #e5eaf0; border-radius: 14px; box-shadow: 0 4px 14px rgba(19,45,83,.05); }.ac-toolbar .form-control { height: 38px; border-radius: 8px; }.ac-toolbar .btn { border-radius: 8px; }
+				.ac-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; margin-bottom: 6px; }.ac-tab { white-space: nowrap; border: 1px solid #dfe6ee; background: #fff; color: #52667f; border-radius: 20px; padding: 7px 11px 7px 13px; font-size: 12px; }.ac-tab b { display: inline-block; min-width: 20px; padding: 1px 6px; margin-left: 7px; background: #eef2f7; border-radius: 10px; color: #334e68; }.ac-tab em { color: #9fb1c3; font-style: normal; }.ac-tab.active { background: #e8f3ff; color: #175f9e; border-color: #b5dbfb; font-weight: 600; }.ac-tab.active b { background: #fff; color: #175f9e; }
+				.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 16px; }.ac-card { overflow: hidden; border: 1px solid #e3e8ef; border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(19,45,83,.05); transition: transform .15s ease, box-shadow .15s ease; }.ac-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(19,45,83,.11); }.ac-card-head { padding: 14px 16px 0; }.ac-state { max-width: 72%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; border-radius: 20px; color: #175f9e; background: #e8f3ff; font-size: 11px; font-weight: 700; }.ac-age { color: #8494a7; font-size: 12px; }.ac-card-body { padding: 18px 16px 14px; }.ac-doc-type { margin: 0 0 6px; color: #68809a; font-size: 12px; font-weight: 600; }.ac-card h3 { min-height: 25px; margin: 0; overflow: hidden; color: #1d3557; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.ac-document-id { margin: 5px 0 0; color: #8394a8; font-size: 12px; }.ac-divider { height: 1px; margin: 18px 0 12px; background: #edf0f4; }.ac-details { color: #5d7087; font-size: 13px; }.ac-details span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ac-details strong { color: #1d3557; white-space: nowrap; }.ac-card-actions { justify-content: flex-start; flex-wrap: wrap; padding: 13px 16px; border-top: 1px solid #edf0f4; background: #fbfcfe; }.ac-card-actions .btn { border-radius: 7px; }
+				.ac-empty { padding: 64px 24px; text-align: center; border: 1px dashed #cfd9e5; border-radius: 14px; background: #fff; }.ac-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; margin: auto auto 12px; border-radius: 50%; background: #e7f7ef; color: #16844a; font-weight: 800; font-size: 21px; }.ac-empty h3 { margin: 0 0 6px; font-size: 18px; }.ac-empty p { margin: 0; color: #718096; }.ac-error { padding: 18px; color: #a61b1b; border: 1px solid #ffcccc; border-radius: 10px; background: #fff5f5; }.ac-loading { opacity: .55; pointer-events: none; }
+				@media (max-width: 700px) { .ac-hero { padding: 22px 18px; }.ac-hero-top { align-items: flex-start; }.ac-hero h2 { font-size: 23px; }.ac-stats { grid-template-columns: 1fr 1fr; }.ac-toolbar { grid-template-columns: 1fr; }.ac-grid { grid-template-columns: 1fr; } }
+			</style>
+			<section class="approval-center">
+				<div class="ac-hero"><div class="ac-hero-top"><div><div class="ac-kicker">${__('Workflow workspace')}</div><h2>${__('Approval Center')}</h2><p>${__('Review, decide, and keep your workflow moving.')}</p></div><button class="ac-refresh" data-ac-refresh>↻ ${__('Refresh')}</button></div><div class="ac-stats"><div class="ac-stat"><span>${__('Awaiting your action')}</span><strong>${summary.pending || 0}</strong></div><div class="ac-stat"><span>${__('Overdue for 3+ days')}</span><strong>${summary.overdue || 0}</strong></div></div></div>
+				<div class="ac-toolbar"><input class="form-control" name="doctype" value="${escaped(state.filters.doctype || '')}" placeholder="${__('Document Type')}"><input class="form-control" name="company" value="${escaped(state.filters.company || '')}" placeholder="${__('Company')}"><input class="form-control" name="from_date" value="${escaped(state.filters.from_date || '')}" type="date"><button class="btn btn-primary" data-ac-filter>${__('Apply filters')}</button></div>
+				<nav class="ac-tabs" aria-label="${__('Approval states')}">${tab_html}</nav>
+				<div class="ac-grid" data-ac-results>${cards}</div>
+			</section>
 		`);
 	}
 
