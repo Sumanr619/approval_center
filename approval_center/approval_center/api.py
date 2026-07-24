@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 import frappe
 from frappe import _
 from frappe.model.workflow import get_transitions, has_approval_access, apply_workflow
@@ -12,6 +14,18 @@ from frappe.utils import cint, get_datetime, now_datetime
 REJECTION_ACTIONS = {"reject", "rejected", "send back"}
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
+
+
+def _has_read_permission_silently(doctype_or_doc):
+    """Check access without adding a permission message to the Desk response.
+
+    Frappe v15 calls this option ``raise_exception``; v16 renamed it to
+    ``print_logs``. Supporting both keeps the dashboard quiet during upgrades.
+    """
+    options = {"print_logs": False}
+    if "print_logs" not in inspect.signature(frappe.has_permission).parameters:
+        options = {"raise_exception": False}
+    return frappe.has_permission(doctype_or_doc, "read", **options)
 
 
 def _parse_filters(filters):
@@ -46,10 +60,13 @@ def _eligible_actions(filters=None):
             # Workflow Action records can outlive a deleted or renamed document.
             # Check first so Frappe does not add one "not found" message per stale row
             # to the current request's response.
+            if not _has_read_permission_silently(workflow_action.reference_doctype):
+                continue
             if not frappe.db.exists(workflow_action.reference_doctype, workflow_action.reference_name):
                 continue
             doc = frappe.get_doc(workflow_action.reference_doctype, workflow_action.reference_name)
-            doc.check_permission("read")
+            if not _has_read_permission_silently(doc):
+                continue
             transitions = [
                 transition
                 for transition in get_transitions(doc, raise_exception=True)
@@ -113,7 +130,7 @@ def get_filter_options():
                 filters={"is_active": 1},
                 fields=["document_type"],
             )
-            if workflow.document_type and frappe.has_permission(workflow.document_type, "read")
+            if workflow.document_type and _has_read_permission_silently(workflow.document_type)
         }
     )
     companies = sorted(frappe.get_list("Company", pluck="name"))
