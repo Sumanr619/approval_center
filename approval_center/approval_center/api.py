@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
-
 import frappe
 from frappe import _
 from frappe.model.workflow import get_transitions, has_approval_access, apply_workflow
@@ -18,14 +16,8 @@ MAX_PAGE_SIZE = 100
 
 def _has_read_permission_silently(doctype_or_doc):
     """Check access without adding a permission message to the Desk response.
-
-    Frappe v15 calls this option ``raise_exception``; v16 renamed it to
-    ``print_logs``. Supporting both keeps the dashboard quiet during upgrades.
     """
-    options = {"print_logs": False}
-    if "print_logs" not in inspect.signature(frappe.has_permission).parameters:
-        options = {"raise_exception": False}
-    return frappe.has_permission(doctype_or_doc, "read", **options)
+    return frappe.has_permission(doctype_or_doc, "read", print_logs=False)
 
 
 def _parse_filters(filters):
