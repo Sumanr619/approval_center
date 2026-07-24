@@ -5,6 +5,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 	const state = {
 		selected_tab: '',
 		filters: {},
+		filter_options: { doctypes: [], companies: [], default_company: null },
 		data: { tabs: [], documents: [], summary: { pending: 0, overdue: 0 } },
 	};
 
@@ -82,9 +83,24 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 		}
 	}
 
+	async function load_filter_options() {
+		try {
+			const response = await frappe.call({ method: 'approval_center.api.get_filter_options' });
+			state.filter_options = response.message;
+			if (!state.filters.company && state.filter_options.default_company) {
+				state.filters.company = state.filter_options.default_company;
+			}
+		} catch (error) {
+			console.error('Approval Center filter options failed to load:', error);
+		}
+		render();
+		refresh();
+	}
+
 	function render() {
 		const escaped = frappe.utils.escape_html;
 		const { tabs, documents, summary } = state.data;
+		const { doctypes, companies } = state.filter_options;
 		const tab_html = [
 			`<button class="ac-tab ${state.selected_tab ? '' : 'active'}" data-ac-tab=""><span>${__('All approvals')}</span><b>${summary.pending || 0}</b></button>`,
 			...tabs.map((tab) => `<button class="ac-tab ${state.selected_tab === tab.key ? 'active' : ''}" data-ac-tab="${escaped(tab.key)}"><span>${escaped(tab.doctype)} <em>·</em> ${escaped(tab.state)}</span><b>${tab.count}</b></button>`),
@@ -123,7 +139,12 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 			</style>
 			<section class="approval-center">
 				<div class="ac-hero"><div class="ac-hero-top"><div><div class="ac-kicker">${__('Workflow workspace')}</div><h2>${__('Approval Center')}</h2><p>${__('Review, decide, and keep your workflow moving.')}</p></div><button class="ac-refresh" data-ac-refresh>↻ ${__('Refresh')}</button></div><div class="ac-stats"><div class="ac-stat"><span>${__('Awaiting your action')}</span><strong>${summary.pending || 0}</strong></div><div class="ac-stat"><span>${__('Overdue for 3+ days')}</span><strong>${summary.overdue || 0}</strong></div></div></div>
-				<div class="ac-toolbar"><input class="form-control" name="doctype" value="${escaped(state.filters.doctype || '')}" placeholder="${__('Document Type')}"><input class="form-control" name="company" value="${escaped(state.filters.company || '')}" placeholder="${__('Company')}"><input class="form-control" name="from_date" value="${escaped(state.filters.from_date || '')}" type="date"><button class="btn btn-primary" data-ac-filter>${__('Apply filters')}</button></div>
+				<div class="ac-toolbar">
+					<select class="form-control" name="doctype"><option value="">${__('All workflow document types')}</option>${doctypes.map((doctype) => `<option value="${escaped(doctype)}" ${state.filters.doctype === doctype ? 'selected' : ''}>${escaped(doctype)}</option>`).join('')}</select>
+					<select class="form-control" name="company"><option value="">${__('All companies')}</option>${companies.map((company) => `<option value="${escaped(company)}" ${state.filters.company === company ? 'selected' : ''}>${escaped(company)}</option>`).join('')}</select>
+					<input class="form-control" name="from_date" value="${escaped(state.filters.from_date || '')}" type="date" aria-label="${__('Created on or after')}">
+					<button class="btn btn-primary" data-ac-filter>${__('Apply filters')}</button>
+				</div>
 				<nav class="ac-tabs" aria-label="${__('Approval states')}">${tab_html}</nav>
 				<div class="ac-grid" data-ac-results>${cards}</div>
 			</section>
@@ -131,5 +152,5 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 	}
 
 	render();
-	refresh();
+	load_filter_options();
 };

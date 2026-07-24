@@ -102,6 +102,30 @@ def _document_title(doc):
     return doc.get(title_field) if title_field else doc.name
 
 
+@frappe.whitelist()
+def get_filter_options():
+    """Return safe, user-relevant choices for the Approval Center filters."""
+    workflow_doctypes = sorted(
+        {
+            workflow.document_type
+            for workflow in frappe.get_all(
+                "Workflow",
+                filters={"is_active": 1},
+                fields=["document_type"],
+            )
+            if workflow.document_type and frappe.has_permission(workflow.document_type, "read")
+        }
+    )
+    companies = sorted(frappe.get_list("Company", pluck="name"))
+    default_company = frappe.defaults.get_user_default("company")
+
+    return {
+        "doctypes": workflow_doctypes,
+        "companies": companies,
+        "default_company": default_company if default_company in companies else None,
+    }
+
+
 def _serialize_item(item):
     doc = item.doc
     return {
