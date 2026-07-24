@@ -144,6 +144,88 @@ def get_filter_options():
     }
 
 
+@frappe.whitelist()
+def get_workflow_summary(filters=None):
+    """Summarise visible documents at pending workflow stages, independent of approver role."""
+    filters = _parse_filters(filters)
+    today = now_datetime().date()
+    rows = []
+    total_pending = 0
+    total_overdue = 0
+
+    workflows = frappe.get_all(
+        "Workflow",
+        filters={"is_active": 1},
+        fields=["name", "document_type", "workflow_state_field"],
+    )
+
+    for workflow in workflows:
+        doctype = workflow.document_type
+        state_field = workflow.workflow_state_field
+        if not doctype or not state_field or (filters.doctype and filters.doctype != doctype):
+            continue
+        if not _has_read_permission_silently(doctype):
+            continue
+
+        states = frappe.get_all(
+            "Workflow Document State",
+            filters={"parent": workflow.name},
+            fields=["state", "is_optional_state"],
+        )
+        non_optional_states = {state.state for state in states if not cint(state.is_optional_state)}
+        transitions = frappe.get_all(
+            "Workflow Transition",
+            filters={"parent": workflow.name},
+            fields=["state", "next_state"],
+        )
+        pending_states = {
+            transition.state for transition in transitions if transition.next_state in non_optional_states
+        }
+        if not pending_states:
+            continue
+
+        meta = frappe.get_meta(doctype)
+        fields = ["name", "creation", state_field]
+        if meta.has_field("company"):
+            fields.append("company")
+
+        document_filters = {state_field: ["in", list(pending_states)]}
+        if filters.company and meta.has_field("company"):
+            document_filters["company"] = filters.company
+
+        documents = frappe.get_list(
+            doctype,
+            filters=document_filters,
+            fields=fields,
+            limit_page_length=0,
+        )
+
+        grouped = {}
+        for document in documents:
+            if filters.from_date and get_datetime(document.creation).date() < get_datetime(filters.from_date).date():
+                continue
+            state = document.get(state_field)
+            grouped.setdefault(state, {"pending": 0, "overdue": 0})["pending"] += 1
+            if (today - get_datetime(document.creation).date()).days > 3:
+                grouped[state]["overdue"] += 1
+
+        for state, counts in grouped.items():
+            rows.append(
+                {
+                    "doctype": doctype,
+                    "workflow": workflow.name,
+                    "state": state,
+                    "pending": counts["pending"],
+                    "overdue": counts["overdue"],
+                }
+            )
+            total_pending += counts["pending"]
+            total_overdue += counts["overdue"]
+
+    rows.sort(key=lambda row: (row["doctype"], row["state"]))
+    return {"rows": rows, "total_pending": total_pending, "total_overdue": total_overdue}
+
+
 def _serialize_item(item):
     doc = item.doc
     return {
