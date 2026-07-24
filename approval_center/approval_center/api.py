@@ -15,9 +15,18 @@ MAX_PAGE_SIZE = 100
 
 
 def _has_read_permission_silently(doctype_or_doc):
-    """Check access without adding a permission message to the Desk response.
+    """Check access without retaining Frappe's explanatory permission messages.
+
+    Some deployed Frappe releases expose different keyword arguments on
+    ``has_permission``. Keeping the temporary message log isolated works with
+    all of them and prevents unrelated denied DocTypes from showing a modal.
     """
-    return frappe.has_permission(doctype_or_doc, "read", print_logs=False)
+    original_message_log = frappe.local.message_log
+    frappe.local.message_log = []
+    try:
+        return frappe.has_permission(doctype_or_doc, "read")
+    finally:
+        frappe.local.message_log = original_message_log
 
 
 def _parse_filters(filters):
