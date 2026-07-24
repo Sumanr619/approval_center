@@ -43,6 +43,11 @@ def _eligible_actions(filters=None):
     eligible = []
     for workflow_action in actions:
         try:
+            # Workflow Action records can outlive a deleted or renamed document.
+            # Check first so Frappe does not add one "not found" message per stale row
+            # to the current request's response.
+            if not frappe.db.exists(workflow_action.reference_doctype, workflow_action.reference_name):
+                continue
             doc = frappe.get_doc(workflow_action.reference_doctype, workflow_action.reference_name)
             doc.check_permission("read")
             transitions = [
