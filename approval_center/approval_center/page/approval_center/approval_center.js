@@ -8,6 +8,8 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 		filter_options: { doctypes: [], companies: [], default_company: null },
 		data: { tabs: [], documents: [], summary: { pending: 0, overdue: 0 } },
 		workflow_summary: { rows: [], total_pending: 0, total_overdue: 0 },
+		sort_by: 'creation',
+		sort_order: 'asc',
 	};
 
 	$container.on('click.approval-center', '[data-ac-tab]', function () {
@@ -43,6 +45,13 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 	$container.on('click.approval-center', '[data-ac-clear-doctype]', function () {
 		state.filters = { ...state.filters, doctype: '' };
 		state.selected_tab = '';
+		refresh();
+	});
+
+	$container.on('change.approval-center', '[data-ac-sort]', function () {
+		const [sort_by, sort_order] = $(this).val().split(':');
+		state.sort_by = sort_by;
+		state.sort_order = sort_order;
 		refresh();
 	});
 
@@ -92,7 +101,12 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 			const [queue_response, workflow_response] = await Promise.all([
 				frappe.call({
 					method: 'approval_center.api.get_dashboard',
-					args: { tab_key: state.selected_tab, filters: state.filters },
+					args: {
+						tab_key: state.selected_tab,
+						filters: state.filters,
+						sort_by: state.sort_by,
+						sort_order: state.sort_order,
+					},
 				}),
 				frappe.call({
 					method: 'approval_center.api.get_workflow_summary',
@@ -145,6 +159,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 		const clear_document_type = state.filters.doctype
 			? `<button class="ac-clear-type" data-ac-clear-doctype>← ${__('All document types')}</button>`
 			: '';
+		const selected_sort = `${state.sort_by}:${state.sort_order}`;
 
 		const cards = documents.length ? documents.map((doc) => {
 			const action_buttons = doc.actions.map((action) => `<button class="btn btn-primary btn-sm" data-ac-action="${escaped(action)}" data-ac-doctype="${escaped(doc.doctype)}" data-ac-name="${escaped(doc.name)}">${escaped(action)}</button>`).join('');
@@ -172,11 +187,11 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 				.ac-refresh { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); color: #fff; border-radius: 8px; padding: 8px 14px; }.ac-refresh:hover { background: rgba(255,255,255,.24); color: #fff; }
 				.ac-backlog { margin-top: 24px; }.ac-backlog-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 11px; }.ac-backlog-title b { font-size: 14px; }.ac-backlog-title span { color: #d9e9f8; font-size: 12px; }.ac-clear-type { padding: 4px 9px; color: #d9e9f8; border: 1px solid rgba(255,255,255,.3); border-radius: 7px; background: transparent; font-size: 11px; }.ac-clear-type:hover { color: #fff; background: rgba(255,255,255,.12); }.ac-summary-cards { display: flex; gap: 12px; overflow-x: auto; padding: 2px 0 5px; }.ac-summary-card { flex: 0 0 195px; min-height: 92px; padding: 13px 15px; color: #fff; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; background: rgba(255,255,255,.12); text-align: left; transition: background .15s ease, transform .15s ease; }.ac-summary-card:hover { background: rgba(255,255,255,.22); transform: translateY(-1px); }.ac-summary-card span { display: block; overflow: hidden; color: #dceeff; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }.ac-summary-card strong { display: block; margin: 5px 0 1px; font-size: 28px; line-height: 1; }.ac-summary-card small { color: #c9e2f8; font-size: 11px; }.ac-summary-empty { width: 100%; padding: 18px; color: #d9e9f8; border: 1px dashed rgba(255,255,255,.3); border-radius: 10px; text-align: center; }
 				.ac-toolbar { display: grid; grid-template-columns: 1.2fr 1.2fr 170px auto; gap: 10px; padding: 16px; margin-bottom: 18px; background: #fff; border: 1px solid #e5eaf0; border-radius: 14px; box-shadow: 0 4px 14px rgba(19,45,83,.05); }.ac-toolbar .form-control { height: 38px; border-radius: 8px; }.ac-toolbar .btn { border-radius: 8px; }
-				.ac-queue-heading { margin: 25px 0 12px; }.ac-queue-heading h3 { margin: 0; color: #1d3557; font-size: 18px; }.ac-queue-heading p { margin: 3px 0 0; color: #718096; font-size: 13px; }
+				.ac-queue-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin: 25px 0 12px; }.ac-queue-heading h3 { margin: 0; color: #1d3557; font-size: 18px; }.ac-queue-heading p { margin: 3px 0 0; color: #718096; font-size: 13px; }.ac-sort { min-width: 210px; height: 34px; border: 1px solid #dce4ec; border-radius: 8px; color: #43566c; background: #fff; font-size: 12px; }
 				.ac-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; margin-bottom: 6px; }.ac-tab { white-space: nowrap; border: 1px solid #dfe6ee; background: #fff; color: #52667f; border-radius: 20px; padding: 7px 11px 7px 13px; font-size: 12px; }.ac-tab b { display: inline-block; min-width: 20px; padding: 1px 6px; margin-left: 7px; background: #eef2f7; border-radius: 10px; color: #334e68; }.ac-tab em { color: #9fb1c3; font-style: normal; }.ac-tab.active { background: #e8f3ff; color: #175f9e; border-color: #b5dbfb; font-weight: 600; }.ac-tab.active b { background: #fff; color: #175f9e; }
 				.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 16px; }.ac-card { overflow: hidden; border: 1px solid #e3e8ef; border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(19,45,83,.05); transition: transform .15s ease, box-shadow .15s ease; }.ac-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(19,45,83,.11); }.ac-card-head { padding: 14px 16px 0; }.ac-state { max-width: 72%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; border-radius: 20px; color: #175f9e; background: #e8f3ff; font-size: 11px; font-weight: 700; }.ac-age { color: #8494a7; font-size: 12px; }.ac-card-body { padding: 18px 16px 14px; }.ac-doc-type { margin: 0 0 6px; color: #68809a; font-size: 12px; font-weight: 600; }.ac-card h3 { min-height: 25px; margin: 0; overflow: hidden; color: #1d3557; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.ac-document-id { margin: 5px 0 0; color: #8394a8; font-size: 12px; }.ac-divider { height: 1px; margin: 18px 0 12px; background: #edf0f4; }.ac-details { color: #5d7087; font-size: 13px; }.ac-details span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ac-details strong { color: #1d3557; white-space: nowrap; }.ac-card-actions { justify-content: flex-start; flex-wrap: wrap; padding: 13px 16px; border-top: 1px solid #edf0f4; background: #fbfcfe; }.ac-card-actions .btn { border-radius: 7px; }
 				.ac-empty { padding: 64px 24px; text-align: center; border: 1px dashed #cfd9e5; border-radius: 14px; background: #fff; }.ac-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; margin: auto auto 12px; border-radius: 50%; background: #e7f7ef; color: #16844a; font-weight: 800; font-size: 21px; }.ac-empty h3 { margin: 0 0 6px; font-size: 18px; }.ac-empty p { margin: 0; color: #718096; }.ac-error { padding: 18px; color: #a61b1b; border: 1px solid #ffcccc; border-radius: 10px; background: #fff5f5; }.ac-loading { opacity: .55; pointer-events: none; }
-				@media (max-width: 700px) { .ac-hero { padding: 22px 18px; }.ac-hero-top { align-items: flex-start; }.ac-hero h2 { font-size: 23px; }.ac-toolbar { grid-template-columns: 1fr; }.ac-grid { grid-template-columns: 1fr; } }
+				@media (max-width: 700px) { .ac-hero { padding: 22px 18px; }.ac-hero-top { align-items: flex-start; }.ac-hero h2 { font-size: 23px; }.ac-toolbar { grid-template-columns: 1fr; }.ac-queue-heading { align-items: stretch; flex-direction: column; }.ac-sort { width: 100%; }.ac-grid { grid-template-columns: 1fr; } }
 			</style>
 			<section class="approval-center">
 				<div class="ac-hero"><div class="ac-hero-top"><div><div class="ac-kicker">${__('Workflow workspace')}</div><h2>${__('Workflow backlog')}</h2><p>${__('All visible documents at a pending workflow stage, grouped by document type.')}</p></div><button class="ac-refresh" data-ac-refresh>↻ ${__('Refresh all')}</button></div><div class="ac-backlog"><div class="ac-backlog-title"><b>${__('Pending workflow documents')}</b><span>${clear_document_type} &nbsp; ${__('Total')}: <strong>${workflow_summary.total_pending}</strong> &nbsp; · &nbsp; ${__('Overdue 3+ days')}: <strong>${workflow_summary.total_overdue}</strong></span></div><div class="ac-summary-cards">${backlog_cards}</div></div></div>
@@ -186,7 +201,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 					<input class="form-control" name="from_date" value="${escaped(state.filters.from_date || '')}" type="date" aria-label="${__('Created on or after')}">
 					<button class="btn btn-primary" data-ac-filter>${__('Apply filters')}</button>
 				</div>
-				<div class="ac-queue-heading"><h3>${__('My approval queue')}</h3><p>${__('Documents you can act on now, based on your workflow role and permissions.')}</p></div>
+				<div class="ac-queue-heading"><div><h3>${__('My approval queue')}</h3><p>${__('Documents you can act on now, based on your workflow role and permissions.')}</p></div><select class="ac-sort" data-ac-sort aria-label="${__('Sort approval queue')}"><option value="creation:asc" ${selected_sort === 'creation:asc' ? 'selected' : ''}>${__('Created: oldest first')}</option><option value="creation:desc" ${selected_sort === 'creation:desc' ? 'selected' : ''}>${__('Created: newest first')}</option><option value="modified:desc" ${selected_sort === 'modified:desc' ? 'selected' : ''}>${__('Last modified: newest first')}</option><option value="modified:asc" ${selected_sort === 'modified:asc' ? 'selected' : ''}>${__('Last modified: oldest first')}</option></select></div>
 				<nav class="ac-tabs" aria-label="${__('Approval states')}">${tab_html}</nav>
 				<div class="ac-grid" data-ac-results>${cards}</div>
 			</section>

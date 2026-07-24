@@ -235,6 +235,7 @@ def _serialize_item(item):
         "state": item.workflow_action.workflow_state,
         "tab_key": _tab_key(doc.doctype, item.workflow_action.workflow_state),
         "creation": doc.creation,
+        "modified": doc.modified,
         "owner": doc.owner,
         "company": doc.get("company") if doc.meta.has_field("company") else None,
         "priority": doc.get("priority") if doc.meta.has_field("priority") else None,
@@ -245,11 +246,20 @@ def _serialize_item(item):
 
 
 @frappe.whitelist()
-def get_dashboard(filters=None, tab_key=None, page=1, page_size=DEFAULT_PAGE_SIZE):
+def get_dashboard(
+    filters=None,
+    tab_key=None,
+    page=1,
+    page_size=DEFAULT_PAGE_SIZE,
+    sort_by="creation",
+    sort_order="asc",
+):
     """Get state tabs and one filtered page of documents for the Desk UI."""
     filters = _parse_filters(filters)
     page = max(cint(page), 1)
     page_size = min(max(cint(page_size), 1), MAX_PAGE_SIZE)
+    sort_by = sort_by if sort_by in {"creation", "modified"} else "creation"
+    sort_order = sort_order if sort_order in {"asc", "desc"} else "asc"
 
     items = [item for item in _eligible_actions(filters) if _matches_filters(item.doc, filters)]
     serialized = [_serialize_item(item) for item in items]
@@ -264,6 +274,7 @@ def get_dashboard(filters=None, tab_key=None, page=1, page_size=DEFAULT_PAGE_SIZ
 
     if tab_key:
         serialized = [row for row in serialized if row["tab_key"] == tab_key]
+    serialized.sort(key=lambda row: row.get(sort_by) or "", reverse=sort_order == "desc")
     start = (page - 1) * page_size
     end = start + page_size
 
