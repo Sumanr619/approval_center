@@ -10,9 +10,12 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 		workflow_summary: { rows: [], total_pending: 0, total_overdue: 0 },
 		sort_by: 'creation',
 		sort_order: 'asc',
+		tab_scroll_left: 0,
 	};
 
 	$container.on('click.approval-center', '[data-ac-tab]', function () {
+		const tab_scroller = $(this).closest('.ac-tabs').get(0);
+		state.tab_scroll_left = tab_scroller ? tab_scroller.scrollLeft : 0;
 		state.selected_tab = $(this).attr('data-ac-tab');
 		refresh();
 	});
@@ -23,6 +26,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 			doctype: $(this).attr('data-ac-summary-doctype'),
 		};
 		state.selected_tab = '';
+		state.tab_scroll_left = 0;
 		refresh();
 	});
 
@@ -33,18 +37,21 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 			from_date: $container.find('[name="from_date"]').val(),
 		};
 		state.selected_tab = '';
+		state.tab_scroll_left = 0;
 		refresh();
 	});
 
 	$container.on('click.approval-center', '[data-ac-refresh]', function () {
 		state.filters = { ...state.filters, doctype: '' };
 		state.selected_tab = '';
+		state.tab_scroll_left = 0;
 		refresh();
 	});
 
 	$container.on('click.approval-center', '[data-ac-clear-doctype]', function () {
 		state.filters = { ...state.filters, doctype: '' };
 		state.selected_tab = '';
+		state.tab_scroll_left = 0;
 		refresh();
 	});
 
@@ -221,6 +228,15 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 				<div class="ac-grid" data-ac-results>${cards}</div>
 			</section>
 		`);
+
+		// Rendering replaces the tab bar. Restore its position after layout so a
+		// click on a tab at the right does not send the user back to the first tab.
+		const tab_scroller = $container.find('.ac-tabs').get(0);
+		if (tab_scroller) {
+			requestAnimationFrame(() => {
+				tab_scroller.scrollLeft = state.tab_scroll_left;
+			});
+		}
 	}
 
 	render();
