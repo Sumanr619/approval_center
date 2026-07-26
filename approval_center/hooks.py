@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/approval_center/css/approval_center.css"
-# app_include_js = "/assets/approval_center/js/approval_center.js"
+app_include_js = "/assets/approval_center/js/approval_center/home_redirect.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/approval_center/css/approval_center.css"
@@ -63,6 +63,9 @@ app_license = "mit"
 # role_home_page = {
 # 	"Role": "home_page"
 # }
+
+# Add Approval Center home-page eligibility to the Desk boot response.
+boot_session = "approval_center.boot.set_approval_center_home"
 
 # Generators
 # ----------
@@ -249,4 +252,3 @@ app_license = "mit"
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-
