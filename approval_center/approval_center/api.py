@@ -13,6 +13,15 @@ REJECTION_ACTIONS = {"reject", "rejected", "send back"}
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
 TOTAL_FIELDS = ("grand_total", "rounded_total", "total", "net_total")
+DUE_DATE_FIELDS = (
+    "required_by",
+    "required_date",
+    "due_date",
+    "payment_due_date",
+    "schedule_date",
+    "delivery_date",
+    "expected_delivery_date",
+)
 CARD_TITLE_FIELDS = (
     "customer_name",
     "supplier_name",
@@ -304,6 +313,20 @@ def _card_details(doc):
     return details
 
 
+def _card_dates(doc):
+    """Return the created date and one relevant due/required date when present."""
+    dates = [{"label": _("Created"), "value": doc.creation}]
+
+    for fieldname in DUE_DATE_FIELDS:
+        field = doc.meta.get_field(fieldname)
+        value = doc.get(fieldname) if field else None
+        if field and value not in (None, ""):
+            dates.append({"label": field.label or _("Due Date"), "value": value})
+            break
+
+    return dates
+
+
 @frappe.whitelist()
 def get_filter_options():
     """Return safe, user-relevant choices for the Approval Center filters."""
@@ -385,6 +408,7 @@ def _serialize_item(item):
         "amount": _document_total(doc),
         "currency": doc.get("currency") if doc.meta.has_field("currency") else None,
         "card_details": _card_details(doc),
+        "card_dates": _card_dates(doc),
         "actions": [transition.action for transition in item.transitions],
     }
 
