@@ -138,6 +138,9 @@ def _eligible_actions(filters=None):
     action_filters = {"status": "Open"}
     if filters.doctype:
         action_filters["reference_doctype"] = filters.doctype
+    search_term = str(filters.search or "").strip()
+    if search_term:
+        action_filters["reference_name"] = ["like", f"%{search_term}%"]
 
     actions = frappe.get_list(
         "Workflow Action",
@@ -186,6 +189,9 @@ def _tab_key(doctype, state):
 
 def _matches_filters(doc, filters):
     """Apply optional cross-DocType filters only when the field exists."""
+    search_term = str(filters.search or "").strip().lower()
+    if search_term and search_term not in doc.name.lower():
+        return False
     if filters.company and doc.meta.has_field("company") and doc.get("company") != filters.company:
         return False
     if filters.priority and doc.meta.has_field("priority") and doc.get("priority") != filters.priority:

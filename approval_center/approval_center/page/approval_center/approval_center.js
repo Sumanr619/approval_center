@@ -30,8 +30,9 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 		refresh();
 	});
 
-	$container.on('change.approval-center', '[data-ac-auto-filter]', function () {
+	function apply_toolbar_filters() {
 		state.filters = {
+			search: $container.find('[name="search"]').val().trim(),
 			doctype: $container.find('[name="doctype"]').val().trim(),
 			company: $container.find('[name="company"]').val().trim(),
 			from_date: $container.find('[name="from_date"]').val(),
@@ -39,6 +40,21 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 		state.selected_tab = '';
 		state.tab_scroll_left = 0;
 		refresh();
+	}
+
+	$container.on('change.approval-center', '[data-ac-auto-filter]', function () {
+		apply_toolbar_filters();
+	});
+
+	$container.on('click.approval-center', '[data-ac-search]', function () {
+		apply_toolbar_filters();
+	});
+
+	$container.on('keydown.approval-center', '[name="search"]', function (event) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			apply_toolbar_filters();
+		}
 	});
 
 	$container.on('click.approval-center', '[data-ac-refresh]', function () {
@@ -224,19 +240,21 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 				.ac-hero h2 { margin: 0; color: #fff; font-size: 27px; font-weight: 700; }.ac-hero p { margin: 8px 0 0; color: #d9e9f8; }
 				.ac-refresh { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); color: #fff; border-radius: 8px; padding: 8px 14px; }.ac-refresh:hover { background: rgba(255,255,255,.24); color: #fff; }
 				.ac-backlog { margin-top: 24px; }.ac-backlog-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 11px; }.ac-backlog-title b { font-size: 14px; }.ac-backlog-title span { color: #d9e9f8; font-size: 12px; }.ac-clear-type { padding: 4px 9px; color: #d9e9f8; border: 1px solid rgba(255,255,255,.3); border-radius: 7px; background: transparent; font-size: 11px; }.ac-clear-type:hover { color: #fff; background: rgba(255,255,255,.12); }.ac-summary-cards { display: flex; gap: 12px; overflow-x: auto; padding: 2px 0 5px; }.ac-summary-card { flex: 0 0 195px; min-height: 92px; padding: 13px 15px; color: #fff; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; background: rgba(255,255,255,.12); text-align: left; transition: background .15s ease, transform .15s ease; }.ac-summary-card:hover { background: rgba(255,255,255,.22); transform: translateY(-1px); }.ac-summary-card span { display: block; overflow: hidden; color: #dceeff; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }.ac-summary-card strong { display: block; margin: 5px 0 1px; font-size: 28px; line-height: 1; }.ac-summary-card small { color: #c9e2f8; font-size: 11px; }.ac-summary-empty { width: 100%; padding: 18px; color: #d9e9f8; border: 1px dashed rgba(255,255,255,.3); border-radius: 10px; text-align: center; }
-				.ac-toolbar { display: grid; grid-template-columns: 1.2fr 1.2fr 170px; gap: 10px; padding: 16px; margin-bottom: 18px; background: #fff; border: 1px solid #e5eaf0; border-radius: 14px; box-shadow: 0 4px 14px rgba(19,45,83,.05); }.ac-toolbar .form-control { height: 38px; border-radius: 8px; }
+				.ac-toolbar { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)) auto; gap: 10px; padding: 16px; margin-bottom: 18px; background: #fff; border: 1px solid #e5eaf0; border-radius: 14px; box-shadow: 0 4px 14px rgba(19,45,83,.05); }.ac-toolbar .form-control { height: 38px; border-radius: 8px; }.ac-search-button { border-radius: 8px; white-space: nowrap; }
 				.ac-queue-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin: 25px 0 12px; }.ac-queue-heading h3 { margin: 0; color: #1d3557; font-size: 18px; }.ac-queue-heading p { margin: 3px 0 0; color: #718096; font-size: 13px; }.ac-sort { min-width: 210px; height: 34px; border: 1px solid #dce4ec; border-radius: 8px; color: #43566c; background: #fff; font-size: 12px; }
 				.ac-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; margin-bottom: 6px; }.ac-tab { white-space: nowrap; border: 1px solid var(--ac-tab-border, #dfe6ee); background: var(--ac-tab-background, #fff); color: var(--ac-tab-text, #52667f); border-radius: 20px; padding: 7px 11px 7px 13px; font-size: 12px; transition: transform .15s ease, box-shadow .15s ease; }.ac-tab:hover { transform: translateY(-1px); }.ac-tab b { display: inline-block; min-width: 20px; padding: 1px 6px; margin-left: 7px; background: var(--ac-tab-badge-background, #eef2f7); border-radius: 10px; color: var(--ac-tab-badge-text, #334e68); font-weight: 800; }.ac-tab em { color: currentColor; opacity: .68; font-style: normal; }.ac-tab.active { border-color: #0d6db8; box-shadow: 0 0 0 2px rgba(13,109,184,.2); font-weight: 700; }
 				.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 16px; }.ac-card { overflow: hidden; border: 1px solid #e3e8ef; border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(19,45,83,.05); transition: transform .15s ease, box-shadow .15s ease; }.ac-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(19,45,83,.11); }.ac-card-head { padding: 14px 16px 0; }.ac-state { max-width: 72%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; border-radius: 20px; color: #175f9e; background: #e8f3ff; font-size: 11px; font-weight: 700; }.ac-age { color: #8494a7; font-size: 12px; }.ac-card-body { padding: 18px 16px 14px; }.ac-doc-type { margin: 0 0 6px; color: #68809a; font-size: 12px; font-weight: 600; }.ac-card h3 { min-height: 25px; margin: 0; overflow: hidden; color: #1d3557; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.ac-document-id { margin: 5px 0 0; color: #8394a8; font-size: 12px; }.ac-card-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; }.ac-card-date { min-width: 0; }.ac-card-date small { display: block; margin-bottom: 3px; color: #8494a7; font-size: 10px; font-weight: 700; letter-spacing: .35px; text-transform: uppercase; }.ac-card-date strong { display: block; overflow: hidden; color: #45627f; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }.ac-divider { height: 1px; margin: 18px 0 12px; background: #edf0f4; }.ac-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }.ac-detail { min-width: 0; color: #5d7087; }.ac-detail small { display: block; margin-bottom: 3px; overflow: hidden; color: #8494a7; font-size: 10px; font-weight: 700; letter-spacing: .35px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }.ac-detail strong { display: block; overflow: hidden; color: #1d3557; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.ac-detail-currency { text-align: right; }.ac-card-actions { justify-content: flex-start; flex-wrap: wrap; padding: 13px 16px; border-top: 1px solid #edf0f4; background: #fbfcfe; }.ac-card-actions .btn { border-radius: 7px; }
 				.ac-empty { padding: 64px 24px; text-align: center; border: 1px dashed #cfd9e5; border-radius: 14px; background: #fff; }.ac-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; margin: auto auto 12px; border-radius: 50%; background: #e7f7ef; color: #16844a; font-weight: 800; font-size: 21px; }.ac-empty h3 { margin: 0 0 6px; font-size: 18px; }.ac-empty p { margin: 0; color: #718096; }.ac-error { padding: 18px; color: #a61b1b; border: 1px solid #ffcccc; border-radius: 10px; background: #fff5f5; }.ac-loading { opacity: .55; pointer-events: none; }
-				@media (max-width: 700px) { .ac-hero { padding: 22px 18px; }.ac-hero-top { align-items: flex-start; }.ac-hero h2 { font-size: 23px; }.ac-toolbar { grid-template-columns: 1fr; }.ac-queue-heading { align-items: stretch; flex-direction: column; }.ac-sort { width: 100%; }.ac-grid { grid-template-columns: 1fr; } }
+				@media (max-width: 900px) { .ac-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ac-search-button { grid-column: span 2; } } @media (max-width: 700px) { .ac-hero { padding: 22px 18px; }.ac-hero-top { align-items: flex-start; }.ac-hero h2 { font-size: 23px; }.ac-toolbar { grid-template-columns: 1fr; }.ac-search-button { grid-column: auto; }.ac-queue-heading { align-items: stretch; flex-direction: column; }.ac-sort { width: 100%; }.ac-grid { grid-template-columns: 1fr; } }
 			</style>
 			<section class="approval-center">
 				<div class="ac-hero"><div class="ac-hero-top"><div><div class="ac-kicker">${__('Workflow workspace')}</div><h2>${__('Workflow backlog')}</h2><p>${__('Documents you can act on now, grouped by document type.')}</p></div><button class="ac-refresh" data-ac-refresh>↻ ${__('Refresh all')}</button></div><div class="ac-backlog"><div class="ac-backlog-title"><b>${__('My pending approvals by document type')}</b><span>${clear_document_type} &nbsp; ${__('Total')}: <strong>${workflow_summary.total_pending}</strong> &nbsp; · &nbsp; ${__('Overdue 3+ days')}: <strong>${workflow_summary.total_overdue}</strong></span></div><div class="ac-summary-cards">${backlog_cards}</div></div></div>
 				<div class="ac-toolbar">
+					<input class="form-control" name="search" value="${escaped(state.filters.search || '')}" placeholder="${__('Search document ID')}" aria-label="${__('Search document ID')}">
 					<select class="form-control" name="doctype" data-ac-auto-filter><option value="">${__('All workflow document types')}</option>${doctypes.map((doctype) => `<option value="${escaped(doctype)}" ${state.filters.doctype === doctype ? 'selected' : ''}>${escaped(doctype)}</option>`).join('')}</select>
 					<select class="form-control" name="company" data-ac-auto-filter><option value="">${__('All companies')}</option>${companies.map((company) => `<option value="${escaped(company)}" ${state.filters.company === company ? 'selected' : ''}>${escaped(company)}</option>`).join('')}</select>
 					<input class="form-control" name="from_date" data-ac-auto-filter value="${escaped(state.filters.from_date || '')}" type="date" aria-label="${__('Created on or after')}">
+					<button class="btn btn-primary ac-search-button" data-ac-search>⌕ ${__('Search')}</button>
 				</div>
 				<div class="ac-queue-heading"><div><h3>${__('My approval queue')}</h3><p>${__('Documents you can act on now, based on your workflow role and permissions.')}</p></div><select class="ac-sort" data-ac-sort aria-label="${__('Sort approval queue')}"><option value="creation:asc" ${selected_sort === 'creation:asc' ? 'selected' : ''}>${__('Created: oldest first')}</option><option value="creation:desc" ${selected_sort === 'creation:desc' ? 'selected' : ''}>${__('Created: newest first')}</option><option value="modified:desc" ${selected_sort === 'modified:desc' ? 'selected' : ''}>${__('Last modified: newest first')}</option><option value="modified:asc" ${selected_sort === 'modified:asc' ? 'selected' : ''}>${__('Last modified: oldest first')}</option></select></div>
 				<nav class="ac-tabs" aria-label="${__('Approval states')}">${tab_html}</nav>
