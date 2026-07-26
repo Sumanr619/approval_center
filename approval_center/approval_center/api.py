@@ -12,6 +12,50 @@ from frappe.utils import cint, get_datetime, now_datetime
 REJECTION_ACTIONS = {"reject", "rejected", "send back"}
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
+TOTAL_FIELDS = ("grand_total", "rounded_total", "total", "net_total")
+CARD_TITLE_FIELDS = (
+    "customer_name",
+    "supplier_name",
+    "applicant_name",
+    "employee_name",
+    "party_name",
+    "borrower_name",
+    "requester_name",
+    "customer",
+    "supplier",
+    "applicant",
+    "employee",
+    "party",
+    "loan_applicant",
+    "project_name",
+    "project",
+    "subject",
+)
+CARD_DETAIL_FIELDS = (
+    "company",
+    "department",
+    "branch",
+    "cost_center",
+    "project",
+    "customer_name",
+    "supplier_name",
+    "applicant_name",
+    "employee_name",
+    "party_name",
+    "customer",
+    "supplier",
+    "applicant",
+    "employee",
+    "party",
+    "requester_name",
+    "requested_by",
+    "sales_person_name",
+    "sales_person",
+    "salesperson",
+    "contact_person",
+)
+IDENTITY_KEYWORDS = ("customer", "supplier", "applicant", "employee", "borrower", "client", "party", "requester")
+CARD_FIELD_TYPES = {"Data", "Link", "Dynamic Link", "Select", "Read Only"}
 
 
 def _has_read_permission_silently(doctype_or_doc):
@@ -151,15 +195,113 @@ def _matches_filters(doc, filters):
 
 
 def _document_total(doc):
-    for fieldname in ("grand_total", "rounded_total", "total", "net_total"):
+    for fieldname in TOTAL_FIELDS:
         if doc.meta.has_field(fieldname) and doc.get(fieldname) is not None:
-            return float(doc.get(fieldname) or 0)
+            return _numeric_value(doc.get(fieldname))
     return 0
+
+
+def _numeric_value(value):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _display_value(value):
+    """Return a compact display-safe value, excluding empty/table values."""
+    if value is None or isinstance(value, (list, tuple, dict)):
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def _field_value(doc, fieldname):
+    if not doc.meta.has_field(fieldname):
+        return None
+    return _display_value(doc.get(fieldname))
+
+
+def _semantic_field_value(doc):
+    """Find a useful identity field for custom DocTypes with non-standard names."""
+    for field in doc.meta.fields:
+        if not field.fieldname or field.hidden or field.fieldtype not in CARD_FIELD_TYPES:
+            continue
+        identity = f"{field.fieldname} {field.label or ''}".lower()
+        if any(keyword in identity for keyword in IDENTITY_KEYWORDS):
+            value = _field_value(doc, field.fieldname)
+            if value and value != doc.name:
+                return value
+    return None
 
 
 def _document_title(doc):
     title_field = doc.meta.get_title_field()
-    return doc.get(title_field) if title_field else doc.name
+    title = _field_value(doc, title_field) if title_field else None
+    if title and title != doc.name:
+        return title
+
+    for fieldname in CARD_TITLE_FIELDS:
+        value = _field_value(doc, fieldname)
+        if value and value != doc.name:
+            return value
+
+    return _semantic_field_value(doc) or doc.name
+
+
+def _card_details(doc):
+    """Return up to two relevant facts for a card without empty placeholders."""
+    details = []
+    seen_values = {doc.name, _document_title(doc)}
+
+    def add_field(fieldname, kind="text"):
+        if len(details) >= 2:
+            return
+        field = doc.meta.get_field(fieldname)
+        value = _field_value(doc, fieldname)
+        if not field or not value or value in seen_values:
+            return
+        details.append({"label": field.label or fieldname.replace("_", " ").title(), "value": value, "kind": kind})
+        seen_values.add(value)
+
+    # These fields are meaningful for most business documents and retain the
+    # familiar company/amount context where it actually exists.
+    add_field("company")
+    for fieldname in TOTAL_FIELDS:
+        field = doc.meta.get_field(fieldname)
+        raw_value = doc.get(fieldname) if field else None
+        amount = _numeric_value(raw_value)
+        if field and raw_value not in (None, "") and amount:
+            details.append(
+                {
+                    "label": field.label or _("Amount"),
+                    "value": amount,
+                    "kind": "currency",
+                    "currency": doc.get("currency") if doc.meta.has_field("currency") else None,
+                }
+            )
+            break
+
+    for fieldname in CARD_DETAIL_FIELDS:
+        add_field(fieldname)
+
+    # Custom approval DocTypes often use their own field names. Match common
+    # business labels as a final, metadata-driven fallback.
+    for field in doc.meta.fields:
+        if len(details) >= 2:
+            break
+        if not field.fieldname or field.hidden or field.fieldtype not in CARD_FIELD_TYPES:
+            continue
+        identity = f"{field.fieldname} {field.label or ''}".lower()
+        if any(keyword in identity for keyword in IDENTITY_KEYWORDS):
+            add_field(field.fieldname)
+
+    if len(details) < 2:
+        owner = _display_value(doc.owner)
+        if owner and owner not in seen_values:
+            details.append({"label": _("Created by"), "value": owner, "kind": "text"})
+
+    return details
 
 
 @frappe.whitelist()
@@ -242,6 +384,7 @@ def _serialize_item(item):
         "priority": doc.get("priority") if doc.meta.has_field("priority") else None,
         "amount": _document_total(doc),
         "currency": doc.get("currency") if doc.meta.has_field("currency") else None,
+        "card_details": _card_details(doc),
         "actions": [transition.action for transition in item.transitions],
     }
 

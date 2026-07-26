@@ -185,15 +185,25 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 
 		const cards = documents.length ? documents.map((doc) => {
 			const action_buttons = doc.actions.map((action) => `<button class="btn btn-primary btn-sm" data-ac-action="${escaped(action)}" data-ac-doctype="${escaped(doc.doctype)}" data-ac-name="${escaped(doc.name)}">${escaped(action)}</button>`).join('');
-			const amount = doc.amount ? format_currency(doc.amount, doc.currency) : __('Not applicable');
+			const document_id = doc.title && doc.title !== doc.name
+				? `<p class="ac-document-id">${escaped(doc.name)}</p>`
+				: '';
+			const card_details = (doc.card_details || []).map((detail) => {
+				const value = detail.kind === 'currency'
+					? format_currency(detail.value, detail.currency || doc.currency)
+					: detail.value;
+				return `<div class="ac-detail ${detail.kind === 'currency' ? 'ac-detail-currency' : ''}"><small>${escaped(detail.label)}</small><strong>${escaped(String(value))}</strong></div>`;
+			}).join('');
+			const detail_section = card_details
+				? `<div class="ac-divider"></div><div class="ac-details">${card_details}</div>`
+				: '';
 			return `<article class="ac-card">
 				<div class="ac-card-head"><span class="ac-state">${escaped(doc.state)}</span><span class="ac-age">${frappe.datetime.comment_when(doc.creation)}</span></div>
 				<div class="ac-card-body">
 					<p class="ac-doc-type">${escaped(doc.doctype)}</p>
 					<h3>${escaped(doc.title || doc.name)}</h3>
-					<p class="ac-document-id">${escaped(doc.name)}</p>
-					<div class="ac-divider"></div>
-					<div class="ac-details"><span>${escaped(doc.company || doc.owner || __('Unassigned'))}</span><strong>${amount}</strong></div>
+					${document_id}
+					${detail_section}
 				</div>
 				<div class="ac-card-actions">${action_buttons}<button class="btn btn-default btn-sm" data-ac-open data-ac-doctype="${escaped(doc.doctype)}" data-ac-name="${escaped(doc.name)}">${__('Review')}</button></div>
 			</article>`;
@@ -203,7 +213,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 			<style>
 				.approval-center { color: #172b4d; max-width: 1440px; margin: 0 auto; padding-bottom: 36px; }
 				.ac-hero { border-radius: 18px; color: #fff; padding: 28px 30px; margin-bottom: 22px; background: linear-gradient(120deg, #172b4d 0%, #1f4b84 60%, #1b6b8e 100%); box-shadow: 0 12px 30px rgba(31,75,132,.18); }
-				.ac-hero-top, .ac-card-head, .ac-details, .ac-card-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+				.ac-hero-top, .ac-card-head, .ac-card-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 				.ac-kicker { margin: 0 0 6px; color: #a9d8ff; font-size: 12px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; }
 				.ac-hero h2 { margin: 0; color: #fff; font-size: 27px; font-weight: 700; }.ac-hero p { margin: 8px 0 0; color: #d9e9f8; }
 				.ac-refresh { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); color: #fff; border-radius: 8px; padding: 8px 14px; }.ac-refresh:hover { background: rgba(255,255,255,.24); color: #fff; }
@@ -211,7 +221,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 				.ac-toolbar { display: grid; grid-template-columns: 1.2fr 1.2fr 170px; gap: 10px; padding: 16px; margin-bottom: 18px; background: #fff; border: 1px solid #e5eaf0; border-radius: 14px; box-shadow: 0 4px 14px rgba(19,45,83,.05); }.ac-toolbar .form-control { height: 38px; border-radius: 8px; }
 				.ac-queue-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin: 25px 0 12px; }.ac-queue-heading h3 { margin: 0; color: #1d3557; font-size: 18px; }.ac-queue-heading p { margin: 3px 0 0; color: #718096; font-size: 13px; }.ac-sort { min-width: 210px; height: 34px; border: 1px solid #dce4ec; border-radius: 8px; color: #43566c; background: #fff; font-size: 12px; }
 				.ac-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; margin-bottom: 6px; }.ac-tab { white-space: nowrap; border: 1px solid var(--ac-tab-border, #dfe6ee); background: var(--ac-tab-background, #fff); color: var(--ac-tab-text, #52667f); border-radius: 20px; padding: 7px 11px 7px 13px; font-size: 12px; transition: transform .15s ease, box-shadow .15s ease; }.ac-tab:hover { transform: translateY(-1px); }.ac-tab b { display: inline-block; min-width: 20px; padding: 1px 6px; margin-left: 7px; background: var(--ac-tab-badge-background, #eef2f7); border-radius: 10px; color: var(--ac-tab-badge-text, #334e68); font-weight: 800; }.ac-tab em { color: currentColor; opacity: .68; font-style: normal; }.ac-tab.active { border-color: #0d6db8; box-shadow: 0 0 0 2px rgba(13,109,184,.2); font-weight: 700; }
-				.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 16px; }.ac-card { overflow: hidden; border: 1px solid #e3e8ef; border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(19,45,83,.05); transition: transform .15s ease, box-shadow .15s ease; }.ac-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(19,45,83,.11); }.ac-card-head { padding: 14px 16px 0; }.ac-state { max-width: 72%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; border-radius: 20px; color: #175f9e; background: #e8f3ff; font-size: 11px; font-weight: 700; }.ac-age { color: #8494a7; font-size: 12px; }.ac-card-body { padding: 18px 16px 14px; }.ac-doc-type { margin: 0 0 6px; color: #68809a; font-size: 12px; font-weight: 600; }.ac-card h3 { min-height: 25px; margin: 0; overflow: hidden; color: #1d3557; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.ac-document-id { margin: 5px 0 0; color: #8394a8; font-size: 12px; }.ac-divider { height: 1px; margin: 18px 0 12px; background: #edf0f4; }.ac-details { color: #5d7087; font-size: 13px; }.ac-details span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ac-details strong { color: #1d3557; white-space: nowrap; }.ac-card-actions { justify-content: flex-start; flex-wrap: wrap; padding: 13px 16px; border-top: 1px solid #edf0f4; background: #fbfcfe; }.ac-card-actions .btn { border-radius: 7px; }
+				.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 16px; }.ac-card { overflow: hidden; border: 1px solid #e3e8ef; border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(19,45,83,.05); transition: transform .15s ease, box-shadow .15s ease; }.ac-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(19,45,83,.11); }.ac-card-head { padding: 14px 16px 0; }.ac-state { max-width: 72%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; border-radius: 20px; color: #175f9e; background: #e8f3ff; font-size: 11px; font-weight: 700; }.ac-age { color: #8494a7; font-size: 12px; }.ac-card-body { padding: 18px 16px 14px; }.ac-doc-type { margin: 0 0 6px; color: #68809a; font-size: 12px; font-weight: 600; }.ac-card h3 { min-height: 25px; margin: 0; overflow: hidden; color: #1d3557; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.ac-document-id { margin: 5px 0 0; color: #8394a8; font-size: 12px; }.ac-divider { height: 1px; margin: 18px 0 12px; background: #edf0f4; }.ac-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }.ac-detail { min-width: 0; color: #5d7087; }.ac-detail small { display: block; margin-bottom: 3px; overflow: hidden; color: #8494a7; font-size: 10px; font-weight: 700; letter-spacing: .35px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }.ac-detail strong { display: block; overflow: hidden; color: #1d3557; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.ac-detail-currency { text-align: right; }.ac-card-actions { justify-content: flex-start; flex-wrap: wrap; padding: 13px 16px; border-top: 1px solid #edf0f4; background: #fbfcfe; }.ac-card-actions .btn { border-radius: 7px; }
 				.ac-empty { padding: 64px 24px; text-align: center; border: 1px dashed #cfd9e5; border-radius: 14px; background: #fff; }.ac-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; margin: auto auto 12px; border-radius: 50%; background: #e7f7ef; color: #16844a; font-weight: 800; font-size: 21px; }.ac-empty h3 { margin: 0 0 6px; font-size: 18px; }.ac-empty p { margin: 0; color: #718096; }.ac-error { padding: 18px; color: #a61b1b; border: 1px solid #ffcccc; border-radius: 10px; background: #fff5f5; }.ac-loading { opacity: .55; pointer-events: none; }
 				@media (max-width: 700px) { .ac-hero { padding: 22px 18px; }.ac-hero-top { align-items: flex-start; }.ac-hero h2 { font-size: 23px; }.ac-toolbar { grid-template-columns: 1fr; }.ac-queue-heading { align-items: stretch; flex-direction: column; }.ac-sort { width: 100%; }.ac-grid { grid-template-columns: 1fr; } }
 			</style>
