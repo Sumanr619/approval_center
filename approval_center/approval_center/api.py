@@ -34,6 +34,45 @@ def _parse_filters(filters):
     return frappe._dict(filters)
 
 
+def _has_only_docstatus_two_transitions(doc, transitions, state_docstatus_cache):
+    """Return true for an optional post-submit cancellation-only workflow step.
+
+    A document already at docstatus 1 is complete from the normal business
+    process perspective. If every action still available to the user only moves
+    it to a state with docstatus 2, that action is optional and should not be
+    shown as a pending approval.
+    """
+    if cint(doc.docstatus) != 1:
+        return False
+
+    next_states = {transition.next_state for transition in transitions if transition.next_state}
+    if not next_states:
+        return False
+
+    if doc.doctype not in state_docstatus_cache:
+        workflow_names = frappe.get_all(
+            "Workflow",
+            filters={"document_type": doc.doctype, "is_active": 1},
+            pluck="name",
+        )
+        workflow_states = (
+            frappe.get_all(
+                "Workflow Document State",
+                filters={"parent": ["in", workflow_names]},
+                fields=["state", "doc_status"],
+            )
+            if workflow_names
+            else []
+        )
+        state_docstatus_cache[doc.doctype] = {
+            state.state: cint(state.doc_status)
+            for state in workflow_states
+        }
+
+    state_docstatus = state_docstatus_cache[doc.doctype]
+    return all(state_docstatus.get(state) == 2 for state in next_states)
+
+
 def _eligible_actions(filters=None):
     """Return open native Workflow Actions the current user can genuinely take.
 
@@ -56,6 +95,7 @@ def _eligible_actions(filters=None):
     )
 
     eligible = []
+    state_docstatus_cache = {}
     for workflow_action in actions:
         try:
             # Workflow Action records can outlive a deleted or renamed document.
@@ -74,6 +114,8 @@ def _eligible_actions(filters=None):
                 if has_approval_access(frappe.session.user, doc, transition)
             ]
             if not transitions:
+                continue
+            if _has_only_docstatus_two_transitions(doc, transitions, state_docstatus_cache):
                 continue
             eligible.append(frappe._dict(workflow_action=workflow_action, doc=doc, transitions=transitions))
         except frappe.PermissionError:
