@@ -301,11 +301,30 @@ def _document_currency(doc):
     return None
 
 
+def _stock_entry_metrics(doc):
+    """Return the compact quantity/value summary displayed beside the title."""
+    metrics = []
+    quantity = _stock_entry_total_quantity(doc)
+    value = _stock_entry_total_value(doc)
+    if quantity:
+        metrics.append({"label": _("Total Quantity"), "value": quantity, "kind": "number"})
+    if value:
+        metrics.append(
+            {
+                "label": _("Total Product Value"),
+                "value": value,
+                "kind": "currency",
+                "currency": _document_currency(doc),
+            }
+        )
+    return metrics
+
+
 def _card_details(doc):
     """Return relevant card facts without empty placeholders."""
     details = []
     seen_values = {doc.name, _document_title(doc)}
-    max_details = 4 if doc.doctype == "Stock Entry" else 2
+    max_details = 2
 
     def add_detail(label, value, kind="text", currency=None, allow_duplicate=False):
         if len(details) >= max_details:
@@ -326,8 +345,6 @@ def _card_details(doc):
     if doc.doctype == "Stock Entry":
         add_detail(_("Source Warehouse"), _stock_entry_warehouse(doc, "from_warehouse", "s_warehouse"), allow_duplicate=True)
         add_detail(_("Target Warehouse"), _stock_entry_warehouse(doc, "to_warehouse", "t_warehouse"), allow_duplicate=True)
-        add_detail(_("Total Quantity"), _stock_entry_total_quantity(doc), "number", allow_duplicate=True)
-        add_detail(_("Total Product Value"), _stock_entry_total_value(doc), "currency", _document_currency(doc), True)
         if details:
             return details
 
@@ -466,6 +483,7 @@ def _serialize_item(item):
         "amount": _document_total(doc),
         "currency": doc.get("currency") if doc.meta.has_field("currency") else None,
         "card_details": _card_details(doc),
+        "card_metrics": _stock_entry_metrics(doc) if doc.doctype == "Stock Entry" else [],
         "card_dates": _card_dates(doc),
         "actions": [transition.action for transition in item.transitions],
     }
