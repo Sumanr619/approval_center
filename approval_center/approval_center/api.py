@@ -278,17 +278,44 @@ def _stock_entry_warehouse(doc, parent_field, item_field):
     return ", ".join(warehouses)
 
 
+def _stock_entry_total_quantity(doc):
+    if doc.meta.has_field("total_qty") and doc.get("total_qty") not in (None, ""):
+        return _numeric_value(doc.get("total_qty"))
+    return sum(_numeric_value(item.get("qty")) for item in doc.get("items") or [])
+
+
+def _stock_entry_total_value(doc):
+    for fieldname in ("total_amount", "total_outgoing_value", "total_incoming_value", "total_basic_amount"):
+        if doc.meta.has_field(fieldname) and doc.get(fieldname) not in (None, ""):
+            amount = _numeric_value(doc.get(fieldname))
+            if amount:
+                return amount
+    return sum(_numeric_value(item.get("basic_amount")) for item in doc.get("items") or [])
+
+
+def _document_currency(doc):
+    if doc.meta.has_field("currency") and doc.get("currency"):
+        return doc.get("currency")
+    if doc.meta.has_field("company") and doc.get("company"):
+        return frappe.get_cached_value("Company", doc.company, "default_currency")
+    return None
+
+
 def _card_details(doc):
-    """Return up to two relevant facts for a card without empty placeholders."""
+    """Return relevant card facts without empty placeholders."""
     details = []
     seen_values = {doc.name, _document_title(doc)}
+    max_details = 4 if doc.doctype == "Stock Entry" else 2
 
-    def add_detail(label, value, kind="text"):
-        if len(details) >= 2:
+    def add_detail(label, value, kind="text", currency=None, allow_duplicate=False):
+        if len(details) >= max_details:
             return
-        if not value or value in seen_values:
+        if not value or (not allow_duplicate and value in seen_values):
             return
-        details.append({"label": label, "value": value, "kind": kind})
+        detail = {"label": label, "value": value, "kind": kind}
+        if currency:
+            detail["currency"] = currency
+        details.append(detail)
         seen_values.add(value)
 
     def add_field(fieldname, kind="text"):
@@ -297,8 +324,10 @@ def _card_details(doc):
             add_detail(field.label or fieldname.replace("_", " ").title(), _field_value(doc, fieldname), kind)
 
     if doc.doctype == "Stock Entry":
-        add_detail(_("Source Warehouse"), _stock_entry_warehouse(doc, "from_warehouse", "s_warehouse"))
-        add_detail(_("Target Warehouse"), _stock_entry_warehouse(doc, "to_warehouse", "t_warehouse"))
+        add_detail(_("Source Warehouse"), _stock_entry_warehouse(doc, "from_warehouse", "s_warehouse"), allow_duplicate=True)
+        add_detail(_("Target Warehouse"), _stock_entry_warehouse(doc, "to_warehouse", "t_warehouse"), allow_duplicate=True)
+        add_detail(_("Total Quantity"), _stock_entry_total_quantity(doc), "number", allow_duplicate=True)
+        add_detail(_("Total Product Value"), _stock_entry_total_value(doc), "currency", _document_currency(doc), True)
         if details:
             return details
 
