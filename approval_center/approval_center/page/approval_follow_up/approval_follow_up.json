@@ -1,0 +1,20 @@
+{
+ "content": null,
+ "creation": "2026-08-05 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "",
+ "idx": 0,
+ "modified": "2026-08-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Approval Center",
+ "name": "approval-follow-up",
+ "owner": "Administrator",
+ "page_name": "approval-follow-up",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Approval Follow-up"
+}

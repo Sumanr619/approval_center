@@ -2,6 +2,8 @@
 
 from approval_center.approval_center.api import (
 	get_filter_options,
+	get_follow_up_dashboard,
+	get_follow_up_filter_options,
 	get_dashboard,
 	get_document_details,
 	get_workflow_summary,
@@ -10,6 +12,8 @@ from approval_center.approval_center.api import (
 
 __all__ = [
 	"get_filter_options",
+	"get_follow_up_dashboard",
+	"get_follow_up_filter_options",
 	"get_dashboard",
 	"get_document_details",
 	"get_workflow_summary",

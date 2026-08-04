@@ -65,6 +65,7 @@ CARD_DETAIL_FIELDS = (
 )
 IDENTITY_KEYWORDS = ("customer", "supplier", "applicant", "employee", "borrower", "client", "party", "requester")
 CARD_FIELD_TYPES = {"Data", "Link", "Dynamic Link", "Select", "Read Only"}
+FOLLOW_UP_ROLES = {"Approval Follow-up", "System Manager"}
 
 
 def _has_read_permission_silently(doctype_or_doc):
@@ -87,6 +88,30 @@ def _parse_filters(filters):
     return frappe._dict(filters)
 
 
+def _workflow_state_docstatuses(doctype, state_docstatus_cache):
+    """Return a cached map of workflow state to its configured docstatus."""
+    if doctype not in state_docstatus_cache:
+        workflow_names = frappe.get_all(
+            "Workflow",
+            filters={"document_type": doctype, "is_active": 1},
+            pluck="name",
+        )
+        workflow_states = (
+            frappe.get_all(
+                "Workflow Document State",
+                filters={"parent": ["in", workflow_names]},
+                fields=["state", "doc_status"],
+            )
+            if workflow_names
+            else []
+        )
+        state_docstatus_cache[doctype] = {
+            state.state: cint(state.doc_status)
+            for state in workflow_states
+        }
+    return state_docstatus_cache[doctype]
+
+
 def _has_only_docstatus_two_transitions(doc, transitions, state_docstatus_cache):
     """Return true for an optional post-submit cancellation-only workflow step.
 
@@ -102,28 +127,17 @@ def _has_only_docstatus_two_transitions(doc, transitions, state_docstatus_cache)
     if not next_states:
         return False
 
-    if doc.doctype not in state_docstatus_cache:
-        workflow_names = frappe.get_all(
-            "Workflow",
-            filters={"document_type": doc.doctype, "is_active": 1},
-            pluck="name",
-        )
-        workflow_states = (
-            frappe.get_all(
-                "Workflow Document State",
-                filters={"parent": ["in", workflow_names]},
-                fields=["state", "doc_status"],
-            )
-            if workflow_names
-            else []
-        )
-        state_docstatus_cache[doc.doctype] = {
-            state.state: cint(state.doc_status)
-            for state in workflow_states
-        }
-
-    state_docstatus = state_docstatus_cache[doc.doctype]
+    state_docstatus = _workflow_state_docstatuses(doc.doctype, state_docstatus_cache)
     return all(state_docstatus.get(state) == 2 for state in next_states)
+
+
+def _ensure_follow_up_access():
+    """Allow only trusted workflow monitoring users to read all workflow data."""
+    if frappe.session.user == "Administrator":
+        return
+    if FOLLOW_UP_ROLES.intersection(frappe.get_roles(frappe.session.user)):
+        return
+    frappe.throw(_("You do not have permission to access Approval Follow-up."), frappe.PermissionError)
 
 
 def _eligible_actions(filters=None):
@@ -530,6 +544,165 @@ def get_dashboard(
         "summary": {
             "pending": len(items),
             "overdue": sum(1 for item in items if (today - get_datetime(item.doc.creation).date()).days > 3),
+        },
+    }
+
+
+def _follow_up_steps(doc, transitions, state_docstatus_cache):
+    """Return the next workflow transitions for the read-only follow-up view.
+
+    A state can offer more than one possible next action.  The first
+    non-cancellation transition is used to categorise the card, while the card
+    itself shows every available next transition to the follow-up user.
+    """
+    state_docstatus = _workflow_state_docstatuses(doc.doctype, state_docstatus_cache)
+    seen = set()
+    steps = []
+    for transition in transitions:
+        key = (transition.action or "", transition.next_state or "", transition.allowed or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        steps.append(
+            {
+                "action": transition.action,
+                "next_state": transition.next_state,
+                "role": transition.allowed,
+                "is_cancellation": state_docstatus.get(transition.next_state) == 2,
+            }
+        )
+    return sorted(
+        steps,
+        key=lambda step: (step["is_cancellation"], step["next_state"] or "", step["action"] or ""),
+    )
+
+
+def _follow_up_tab_key(doctype, state, step):
+    return "::".join((doctype or "", state or "", step["next_state"] or "", step["role"] or ""))
+
+
+def _follow_up_items(filters=None):
+    """Return all open workflow documents for trusted monitoring users.
+
+    Unlike the Approval Center queue, this intentionally does *not* filter by
+    the logged-in user's workflow role or document permissions.  The endpoint
+    is protected by ``_ensure_follow_up_access`` and exists for assigned
+    follow-up staff to monitor the organisation-wide workflow backlog.
+    """
+    _ensure_follow_up_access()
+    filters = _parse_filters(filters)
+    action_filters = {"status": "Open"}
+    if filters.doctype:
+        action_filters["reference_doctype"] = filters.doctype
+    search_term = str(filters.search or "").strip()
+    if search_term:
+        action_filters["reference_name"] = ["like", f"%{search_term}%"]
+
+    actions = frappe.get_all(
+        "Workflow Action",
+        filters=action_filters,
+        fields=["name", "reference_doctype", "reference_name", "workflow_state", "creation"],
+        order_by="creation asc",
+    )
+
+    items = []
+    seen_documents = set()
+    state_docstatus_cache = {}
+    for workflow_action in actions:
+        key = (workflow_action.reference_doctype, workflow_action.reference_name)
+        if key in seen_documents:
+            continue
+        try:
+            if not frappe.db.exists(*key):
+                continue
+            doc = frappe.get_doc(*key)
+            transitions = get_transitions(doc, raise_exception=True)
+            if not transitions or _has_only_docstatus_two_transitions(doc, transitions, state_docstatus_cache):
+                continue
+            if not _matches_filters(doc, filters):
+                continue
+            steps = _follow_up_steps(doc, transitions, state_docstatus_cache)
+            if not steps:
+                continue
+            seen_documents.add(key)
+            items.append(frappe._dict(workflow_action=workflow_action, doc=doc, transitions=transitions, steps=steps))
+        except Exception:
+            # Workflow Action rows can remain after a document/workflow changes.
+            # A monitor should see the valid backlog rather than a page failure.
+            frappe.log_error(frappe.get_traceback(), "Approval Follow-up: skipped workflow action")
+    return items
+
+
+@frappe.whitelist()
+def get_follow_up_filter_options():
+    """Return active workflow DocTypes and companies for the monitoring page."""
+    _ensure_follow_up_access()
+    doctypes = sorted(
+        {
+            workflow.document_type
+            for workflow in frappe.get_all(
+                "Workflow",
+                filters={"is_active": 1},
+                fields=["document_type"],
+            )
+            if workflow.document_type
+        }
+    )
+    return {"doctypes": doctypes, "companies": sorted(frappe.get_all("Company", pluck="name"))}
+
+
+@frappe.whitelist()
+def get_follow_up_dashboard(filters=None, tab_key=None, sort_by="creation", sort_order="asc"):
+    """Return read-only workflow monitoring data grouped by next transition."""
+    _ensure_follow_up_access()
+    sort_by = sort_by if sort_by in {"creation", "modified"} else "creation"
+    sort_order = sort_order if sort_order in {"asc", "desc"} else "asc"
+    items = _follow_up_items(filters)
+    rows = []
+
+    for item in items:
+        row = _serialize_item(item)
+        primary_step = item.steps[0]
+        row.update(
+            {
+                "next_steps": item.steps,
+                "tab_key": _follow_up_tab_key(row["doctype"], row["state"], primary_step),
+                "next_action": primary_step["action"],
+                "next_state": primary_step["next_state"],
+                "next_role": primary_step["role"],
+            }
+        )
+        rows.append(row)
+
+    tab_counts = {}
+    for row in rows:
+        tab_counts.setdefault(
+            row["tab_key"],
+            {
+                "key": row["tab_key"],
+                "doctype": row["doctype"],
+                "state": row["state"],
+                "next_action": row["next_action"],
+                "next_state": row["next_state"],
+                "role": row["next_role"],
+                "count": 0,
+            },
+        )["count"] += 1
+    tabs = sorted(
+        tab_counts.values(),
+        key=lambda tab: (tab["doctype"], tab["state"], tab["next_state"], tab["role"] or ""),
+    )
+
+    filtered_rows = [row for row in rows if not tab_key or row["tab_key"] == tab_key]
+    filtered_rows.sort(key=lambda row: row.get(sort_by) or "", reverse=sort_order == "desc")
+    today = now_datetime().date()
+    return {
+        "tabs": tabs,
+        "documents": filtered_rows,
+        "total": len(filtered_rows),
+        "summary": {
+            "pending": len(rows),
+            "overdue": sum(1 for row in rows if (today - get_datetime(row["creation"]).date()).days > 3),
         },
     }
 
