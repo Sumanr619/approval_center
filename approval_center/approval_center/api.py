@@ -264,20 +264,43 @@ def _document_title(doc):
     return _semantic_field_value(doc) or doc.name
 
 
+def _stock_entry_warehouse(doc, parent_field, item_field):
+    """Read a Stock Entry warehouse from its header, then its item rows."""
+    warehouse = _field_value(doc, parent_field)
+    if warehouse:
+        return warehouse
+
+    warehouses = []
+    for item in doc.get("items") or []:
+        warehouse = _display_value(item.get(item_field))
+        if warehouse and warehouse not in warehouses:
+            warehouses.append(warehouse)
+    return ", ".join(warehouses)
+
+
 def _card_details(doc):
     """Return up to two relevant facts for a card without empty placeholders."""
     details = []
     seen_values = {doc.name, _document_title(doc)}
 
-    def add_field(fieldname, kind="text"):
+    def add_detail(label, value, kind="text"):
         if len(details) >= 2:
             return
-        field = doc.meta.get_field(fieldname)
-        value = _field_value(doc, fieldname)
-        if not field or not value or value in seen_values:
+        if not value or value in seen_values:
             return
-        details.append({"label": field.label or fieldname.replace("_", " ").title(), "value": value, "kind": kind})
+        details.append({"label": label, "value": value, "kind": kind})
         seen_values.add(value)
+
+    def add_field(fieldname, kind="text"):
+        field = doc.meta.get_field(fieldname)
+        if field:
+            add_detail(field.label or fieldname.replace("_", " ").title(), _field_value(doc, fieldname), kind)
+
+    if doc.doctype == "Stock Entry":
+        add_detail(_("Source Warehouse"), _stock_entry_warehouse(doc, "from_warehouse", "s_warehouse"))
+        add_detail(_("Target Warehouse"), _stock_entry_warehouse(doc, "to_warehouse", "t_warehouse"))
+        if details:
+            return details
 
     # These fields are meaningful for most business documents and retain the
     # familiar company/amount context where it actually exists.
