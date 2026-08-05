@@ -581,6 +581,23 @@ def _follow_up_tab_key(doctype, state, step):
     return "::".join((doctype or "", state or "", step["next_state"] or "", step["role"] or ""))
 
 
+def _follow_up_overdue_counts(rows):
+    """Return cumulative ageing buckets for the workflow monitoring header."""
+    today = now_datetime().date()
+    buckets = {"overdue_3": 0, "overdue_7": 0, "overdue_14": 0, "overdue_30": 0}
+    for row in rows:
+        age_days = (today - get_datetime(row["creation"]).date()).days
+        if age_days >= 3:
+            buckets["overdue_3"] += 1
+        if age_days >= 7:
+            buckets["overdue_7"] += 1
+        if age_days >= 14:
+            buckets["overdue_14"] += 1
+        if age_days >= 30:
+            buckets["overdue_30"] += 1
+    return buckets
+
+
 def _follow_up_items(filters=None):
     """Return all open workflow documents for trusted monitoring users.
 
@@ -695,14 +712,15 @@ def get_follow_up_dashboard(filters=None, tab_key=None, sort_by="creation", sort
 
     filtered_rows = [row for row in rows if not tab_key or row["tab_key"] == tab_key]
     filtered_rows.sort(key=lambda row: row.get(sort_by) or "", reverse=sort_order == "desc")
-    today = now_datetime().date()
+    overdue_counts = _follow_up_overdue_counts(rows)
     return {
         "tabs": tabs,
         "documents": filtered_rows,
         "total": len(filtered_rows),
         "summary": {
             "pending": len(rows),
-            "overdue": sum(1 for row in rows if (today - get_datetime(row["creation"]).date()).days > 3),
+            "overdue": overdue_counts["overdue_3"],
+            **overdue_counts,
         },
     }
 
