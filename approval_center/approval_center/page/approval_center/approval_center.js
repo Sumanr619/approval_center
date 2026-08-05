@@ -163,6 +163,16 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 		refresh();
 	}
 
+	function format_card_currency(value, currency) {
+		// Frappe's Currency formatter returns a small HTML fragment for Desk
+		// fields. Cards render text, so retain only its visible formatted value.
+		const formatted = frappe.format(value, {
+			fieldtype: 'Currency',
+			options: currency || frappe.defaults.get_default('currency'),
+		});
+		return $('<div>').html(formatted).text().trim();
+	}
+
 	function render() {
 		const escaped = frappe.utils.escape_html;
 		const { tabs, documents, summary } = state.data;
@@ -208,7 +218,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 				: '';
 			const stock_metrics = (doc.card_metrics || []).map((metric) => {
 				const value = metric.kind === 'currency'
-					? format_currency(metric.value, metric.currency || doc.currency)
+					? format_card_currency(metric.value, metric.currency || doc.currency)
 					: metric.value;
 				return `<div class="ac-stock-metric"><small>${escaped(metric.label)}</small><strong>${escaped(String(value))}</strong></div>`;
 			}).join('');
@@ -220,7 +230,7 @@ frappe.pages['approval-center'].on_page_load = function (wrapper) {
 			const date_section = card_dates ? `<div class="ac-card-dates">${card_dates}</div>` : '';
 			const card_details = (doc.card_details || []).map((detail) => {
 				const value = detail.kind === 'currency'
-					? format_currency(detail.value, detail.currency || doc.currency)
+					? format_card_currency(detail.value, detail.currency || doc.currency)
 					: detail.value;
 				return `<div class="ac-detail ${detail.kind === 'currency' ? 'ac-detail-currency' : ''}"><small>${escaped(detail.label)}</small><strong>${escaped(String(value))}</strong></div>`;
 			}).join('');

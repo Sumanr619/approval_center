@@ -89,7 +89,13 @@ frappe.pages['approval-follow-up'].on_page_load = function (wrapper) {
 	}
 
 	function format_currency(value, currency) {
-		return frappe.format(value, { fieldtype: 'Currency', options: currency || frappe.defaults.get_default('currency') });
+		// The Desk formatter returns HTML (for right alignment).  Convert it to
+		// plain visible text before escaping it for the card.
+		const formatted = frappe.format(value, {
+			fieldtype: 'Currency',
+			options: currency || frappe.defaults.get_default('currency'),
+		});
+		return $('<div>').html(formatted).text().trim();
 	}
 
 	function render() {
