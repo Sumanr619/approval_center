@@ -214,6 +214,9 @@ def _matches_filters(doc, filters):
         return False
     if filters.to_date and get_datetime(doc.creation).date() > get_datetime(filters.to_date).date():
         return False
+    min_age_days = cint(filters.min_age_days)
+    if min_age_days and (now_datetime().date() - get_datetime(doc.creation).date()).days < min_age_days:
+        return False
 
     total = _document_total(doc)
     if filters.min_amount not in (None, "") and total < float(filters.min_amount):
